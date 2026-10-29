@@ -26,8 +26,4 @@ impl SimulationGraphics {
             draw_circle(unit.x, unit.y, 10.0, unit.color);
         }
     }
-
-    pub fn update_graphics(&self) {
-        self.draw();
-    }
 }

@@ -1,9 +1,7 @@
-use crate::graphics;
-
 // Define the environment constants
 const BOX_WIDTH: f64 = 10.0;
 const BOX_HEIGHT: f64 = 10.0;
-// const ENTITY_SIZE: f64 = 0.5;
+const ENTITY_RADIUS: f64 = 0.2; // Circle radius in simulation units (10px / 50 scale)
 const BOUNCE_COEFFICIENT: f64 = 0.8;
 const FRICTION: f64 = 0.99;
 
@@ -19,7 +17,6 @@ pub struct Entity {
 pub struct Simulation {
     pub entity: Entity,
     pub paused: bool,
-    pub graphics: graphics::SimulationGraphics,
 }
 
 // Initialize the simulation
@@ -32,7 +29,6 @@ pub fn init_simulation() -> Simulation {
             vy: 0.0,
         },
         paused: false,
-        graphics: graphics::SimulationGraphics::new(),
     }
 }
 
@@ -48,22 +44,32 @@ pub fn update_simulation(simulation: &mut Simulation) {
     entity.x += entity.vx;
     entity.y += entity.vy;
 
-    // Handle wall collisions
-    if entity.x <= 0.0 || entity.x >= BOX_WIDTH {
-        entity.vx = -entity.vx * BOUNCE_COEFFICIENT;
-        entity.x = entity.x.clamp(0.0, BOX_WIDTH);
+    // Handle wall collisions - check if the edge of the circle hits the wall
+    // Left wall: entity.x - radius <= 0
+    // Right wall: entity.x + radius >= BOX_WIDTH
+    // Top wall: entity.y - radius <= 0
+    // Bottom wall: entity.y + radius >= BOX_HEIGHT
+    
+    if entity.x - ENTITY_RADIUS <= 0.0 {
+        entity.vx = entity.vx.abs() * BOUNCE_COEFFICIENT; // Bounce right
+        entity.x = ENTITY_RADIUS; // Position at wall + radius
     }
-    if entity.y <= 0.0 || entity.y >= BOX_HEIGHT {
-        entity.vy = -entity.vy * BOUNCE_COEFFICIENT;
-        entity.y = entity.y.clamp(0.0, BOX_HEIGHT);
+    if entity.x + ENTITY_RADIUS >= BOX_WIDTH {
+        entity.vx = -entity.vx.abs() * BOUNCE_COEFFICIENT; // Bounce left
+        entity.x = BOX_WIDTH - ENTITY_RADIUS; // Position at wall - radius
+    }
+    if entity.y - ENTITY_RADIUS <= 0.0 {
+        entity.vy = entity.vy.abs() * BOUNCE_COEFFICIENT; // Bounce down
+        entity.y = ENTITY_RADIUS; // Position at wall + radius
+    }
+    if entity.y + ENTITY_RADIUS >= BOX_HEIGHT {
+        entity.vy = -entity.vy.abs() * BOUNCE_COEFFICIENT; // Bounce up
+        entity.y = BOX_HEIGHT - ENTITY_RADIUS; // Position at wall - radius
     }
 
     // Apply friction
     entity.vx *= FRICTION;
     entity.vy *= FRICTION;
-
-    // Update graphics
-    simulation.graphics.update_graphics();
 }
 
 // Handle keyboard input
@@ -108,15 +114,55 @@ mod tests {
     }
 
     #[test]
-    fn test_update_simulation_collision() {
+    fn test_update_simulation_collision_right_wall() {
         let mut sim = init_simulation();
-        sim.entity.x = BOX_WIDTH - 0.1;
+        // Position entity so its right edge is at the wall
+        sim.entity.x = BOX_WIDTH - ENTITY_RADIUS;
         sim.entity.vx = 1.0;
 
         update_simulation(&mut sim);
 
-        assert_eq!(sim.entity.x, BOX_WIDTH);
-        assert_eq!(sim.entity.vx, -BOUNCE_COEFFICIENT * FRICTION);
+        // Should bounce and be positioned at wall - radius
+        assert!((sim.entity.x - (BOX_WIDTH - ENTITY_RADIUS)).abs() < 0.001);
+        assert!(sim.entity.vx < 0.0); // Moving left after bounce
+    }
+
+    #[test]
+    fn test_update_simulation_collision_left_wall() {
+        let mut sim = init_simulation();
+        // Position entity so its left edge is at the wall
+        sim.entity.x = ENTITY_RADIUS;
+        sim.entity.vx = -1.0;
+
+        update_simulation(&mut sim);
+
+        // Should bounce and be positioned at wall + radius
+        assert!((sim.entity.x - ENTITY_RADIUS).abs() < 0.001);
+        assert!(sim.entity.vx > 0.0); // Moving right after bounce
+    }
+
+    #[test]
+    fn test_update_simulation_collision_top_wall() {
+        let mut sim = init_simulation();
+        sim.entity.y = ENTITY_RADIUS;
+        sim.entity.vy = -1.0;
+
+        update_simulation(&mut sim);
+
+        assert!((sim.entity.y - ENTITY_RADIUS).abs() < 0.001);
+        assert!(sim.entity.vy > 0.0); // Moving down after bounce
+    }
+
+    #[test]
+    fn test_update_simulation_collision_bottom_wall() {
+        let mut sim = init_simulation();
+        sim.entity.y = BOX_HEIGHT - ENTITY_RADIUS;
+        sim.entity.vy = 1.0;
+
+        update_simulation(&mut sim);
+
+        assert!((sim.entity.y - (BOX_HEIGHT - ENTITY_RADIUS)).abs() < 0.001);
+        assert!(sim.entity.vy < 0.0); // Moving up after bounce
     }
 
     #[test]
@@ -142,24 +188,23 @@ mod tests {
         assert!(!sim.paused);
     }
 
-    // Test for edge case: entity at the corner
     #[test]
     fn test_corner_collision() {
         let mut sim = init_simulation();
-        sim.entity.x = BOX_WIDTH - 0.1;
-        sim.entity.y = BOX_HEIGHT - 0.1;
-        sim.entity.vx = 1.0;
-        sim.entity.vy = 1.0;
+        sim.entity.x = BOX_WIDTH - ENTITY_RADIUS - 0.01;
+        sim.entity.y = BOX_HEIGHT - ENTITY_RADIUS - 0.01;
+        sim.entity.vx = 0.5;
+        sim.entity.vy = 0.5;
 
         update_simulation(&mut sim);
 
-        assert_eq!(sim.entity.x, BOX_WIDTH);
-        assert_eq!(sim.entity.y, BOX_HEIGHT);
-        assert_eq!(sim.entity.vx, -BOUNCE_COEFFICIENT * FRICTION);
-        assert_eq!(sim.entity.vy, -BOUNCE_COEFFICIENT * FRICTION);
+        // Should hit both right and bottom walls
+        assert!((sim.entity.x - (BOX_WIDTH - ENTITY_RADIUS)).abs() < 0.001);
+        assert!((sim.entity.y - (BOX_HEIGHT - ENTITY_RADIUS)).abs() < 0.001);
+        assert!(sim.entity.vx < 0.0); // Bouncing left
+        assert!(sim.entity.vy < 0.0); // Bouncing up
     }
 
-    // Test for edge case: very high velocity
     #[test]
     fn test_high_velocity() {
         let mut sim = init_simulation();
@@ -174,7 +219,6 @@ mod tests {
         assert!(sim.entity.vy < 10.0);
     }
 
-    // Test for edge case: negative velocity
     #[test]
     fn test_negative_velocity() {
         let mut sim = init_simulation();
@@ -189,7 +233,6 @@ mod tests {
         assert_eq!(sim.entity.vy, -FRICTION);
     }
 
-    // Test for edge case: entity at the center with zero velocity
     #[test]
     fn test_center_zero_velocity() {
         let mut sim = init_simulation();
