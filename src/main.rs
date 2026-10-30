@@ -182,7 +182,7 @@ async fn main() {
                 message,
                 SCREEN_WIDTH / 2.0 - text_width / 2.0,
                 SCREEN_HEIGHT / 2.0 - 50.0,
-                30.0,
+                20.0,
                 Color {
                     r: 0.0,
                     g: 1.0,
