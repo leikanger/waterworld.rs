@@ -17,24 +17,41 @@ async fn main() {
     let mut simulation = init_simulation();
     let mut graphics = SimulationGraphics::new();
 
-    // Add the player unit (scaled to screen coordinates)
+    // Add the player unit (scaled to screen coordinates) - WHITE
     graphics.add_unit(
         (simulation.entity.x as f32 - 5.0) * ENTITY_SCALE + SCREEN_WIDTH / 2.0,
         (simulation.entity.y as f32 - 5.0) * ENTITY_SCALE + SCREEN_HEIGHT / 2.0,
-        RED,
+        WHITE,
     );
 
     // Add creeps
     for creep in &simulation.creeps {
+        let creep_color = match creep.creep_type {
+            simulation::CreepType::Green => GREEN,
+            simulation::CreepType::Red => RED,
+        };
         graphics.add_creep(
             (creep.x as f32 - 5.0) * CREEP_SCALE + SCREEN_WIDTH / 2.0,
             (creep.y as f32 - 5.0) * CREEP_SCALE + SCREEN_HEIGHT / 2.0,
-            BLUE,
+            creep_color,
         );
     }
 
     loop {
-        clear_background(BLACK);
+        // Flash background white if flash timer is active
+        if simulation.flash_timer > 0.0 {
+            // Alternate between white and black for flashing effect
+            let flash_intensity = (simulation.flash_timer * 10.0).sin().abs() as f32;
+            let bg_color = Color {
+                r: flash_intensity,
+                g: flash_intensity,
+                b: flash_intensity,
+                a: 1.0,
+            };
+            clear_background(bg_color);
+        } else {
+            clear_background(BLACK);
+        }
 
         // Handle input - WASD and Arrow keys for movement
         let mut input_vx = 0.0;
@@ -79,15 +96,112 @@ async fn main() {
         // Update creep graphics
         graphics.clear_creeps();
         for creep in &simulation.creeps {
+            // Get base color based on creep type
+            let base_color = match creep.creep_type {
+                simulation::CreepType::Green => GREEN,
+                simulation::CreepType::Red => RED,
+            };
+
+            // Add pulsing effect for recently hit creeps
+            let mut creep_color = base_color;
+            if creep.hit_timer > 0.0 {
+                // Pulse between the base color and white based on hit timer
+                let pulse_factor = (creep.hit_timer * 5.0).sin().abs();
+                let white_factor = pulse_factor as f32;
+                creep_color = Color {
+                    r: base_color.r * (1.0 - white_factor) + WHITE.r * white_factor,
+                    g: base_color.g * (1.0 - white_factor) + WHITE.g * white_factor,
+                    b: base_color.b * (1.0 - white_factor) + WHITE.b * white_factor,
+                    a: 1.0,
+                };
+            }
+
             graphics.add_creep(
                 (creep.x as f32 - 5.0) * CREEP_SCALE + SCREEN_WIDTH / 2.0,
                 (creep.y as f32 - 5.0) * CREEP_SCALE + SCREEN_HEIGHT / 2.0,
-                BLUE,
+                creep_color,
+            );
+        }
+
+        // Update particle graphics
+        graphics.clear_particles();
+        for particle in &simulation.particles {
+            // Calculate alpha based on particle life (fade out effect)
+            let alpha = (particle.life / particle.max_life) as f32;
+            let size = 3.0 * (1.0 - alpha * 0.7); // Particles shrink as they fade
+
+            let color = match particle.color {
+                simulation::ParticleColor::Blue => BLUE,
+                simulation::ParticleColor::Cyan => Color::new(0.0, 1.0, 1.0, 1.0), // Cyan
+                simulation::ParticleColor::White => WHITE,
+                simulation::ParticleColor::Green => GREEN,
+                simulation::ParticleColor::Red => RED,
+            };
+
+            // Apply alpha to the color
+            let particle_color = Color {
+                r: color.r,
+                g: color.g,
+                b: color.b,
+                a: alpha,
+            };
+
+            graphics.add_particle(
+                (particle.x as f32 - 5.0) * CREEP_SCALE + SCREEN_WIDTH / 2.0,
+                (particle.y as f32 - 5.0) * CREEP_SCALE + SCREEN_HEIGHT / 2.0,
+                size,
+                particle_color,
+            );
+        }
+
+        // Update sound wave graphics
+        graphics.clear_sound_waves();
+        for wave in &simulation.sound_waves {
+            // Calculate alpha based on wave life (fade out effect)
+            let alpha = (wave.life / wave.max_life) as f32;
+            let wave_color = Color {
+                r: 0.0,
+                g: 1.0,
+                b: 1.0,
+                a: alpha * 0.5, // Semi-transparent cyan
+            };
+
+            graphics.add_sound_wave(
+                (wave.x as f32 - 5.0) * CREEP_SCALE + SCREEN_WIDTH / 2.0,
+                (wave.y as f32 - 5.0) * CREEP_SCALE + SCREEN_HEIGHT / 2.0,
+                (wave.radius as f32) * CREEP_SCALE,
+                wave_color,
             );
         }
 
         // Draw everything
         graphics.draw();
+
+        // Draw creep count with types
+        let green_count = simulation
+            .creeps
+            .iter()
+            .filter(|c| matches!(c.creep_type, simulation::CreepType::Green))
+            .count();
+        let red_count = simulation
+            .creeps
+            .iter()
+            .filter(|c| matches!(c.creep_type, simulation::CreepType::Red))
+            .count();
+        draw_text(
+            format!("Green creeps: {} (+1.0)", green_count).as_str(),
+            20.0,
+            140.0,
+            20.0,
+            GREEN,
+        );
+        draw_text(
+            format!("Red creeps: {} (-1.0)", red_count).as_str(),
+            20.0,
+            160.0,
+            20.0,
+            RED,
+        );
 
         // Draw controls and status
         draw_text("Controls:", 20.0, 20.0, 20.0, WHITE);
@@ -101,6 +215,13 @@ async fn main() {
             20.0,
             WHITE,
         );
+        draw_text(
+            format!("Score: {}", simulation.score).as_str(),
+            20.0,
+            120.0,
+            20.0,
+            Color::new(0.0, 1.0, 1.0, 1.0), // Cyan for score
+        );
 
         // Draw pause status - big and clear
         if simulation.paused {
@@ -110,6 +231,25 @@ async fn main() {
                 SCREEN_HEIGHT / 2.0,
                 20.0,
                 YELLOW,
+            );
+        }
+
+        // Draw reset completion message
+        if simulation.reset_timer > 0.0 {
+            let alpha = (simulation.reset_timer / 2.0).min(1.0) as f32;
+            let message = "All Green Creeps Collected! Creeps Reset";
+            let text_width = measure_text(message, None, 20, 1.0).width;
+            draw_text(
+                message,
+                SCREEN_WIDTH / 2.0 - text_width / 2.0,
+                SCREEN_HEIGHT / 2.0 - 50.0,
+                30.0,
+                Color {
+                    r: 0.0,
+                    g: 1.0,
+                    b: 0.0,
+                    a: alpha,
+                },
             );
         }
 
