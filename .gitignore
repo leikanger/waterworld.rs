@@ -7,3 +7,11 @@ src/nres/arkiv
 .bacon-locations
 .vscode/launch.json
 .zed/debug.json
+
+/.agents/
+agents
+/.vibe/
+AGENTS.md
+skills-lock.json
+plan.md
+
