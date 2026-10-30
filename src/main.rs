@@ -36,50 +36,11 @@ async fn main() {
         // Get delta time for frame-independent updates
         let delta_time = get_frame_time();
 
-        // Flash background white if flash timer is active
-        let flash_intensity = graphics.get_flash_intensity();
-        if flash_intensity > 0.0 {
-            let bg_color = Color {
-                r: flash_intensity,
-                g: flash_intensity,
-                b: flash_intensity,
-                a: 1.0,
-            };
-            clear_background(bg_color);
-        } else {
-            clear_background(BLACK);
-        }
+        // after completion of all green: flash background for a timer.
+        flash_bakground_white_if_timer(&mut graphics);
 
-        // Handle input - WASD and Arrow keys for movement
-        let mut input_vx = 0.0;
-        let mut input_vy = 0.0;
-
-        if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
-            input_vx -= 0.02;
-        }
-        if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
-            input_vx += 0.02;
-        }
-        if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
-            input_vy -= 0.02;
-        }
-        if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
-            input_vy += 0.02;
-        }
-
-        // Apply input acceleration to velocity
-        simulation.entity.vx += input_vx;
-        simulation.entity.vy += input_vy;
-
-        // Toggle pause with Space
-        if is_key_pressed(KeyCode::Space) {
-            simulation.paused = !simulation.paused;
-        }
-
-        // Quit with ESC or Q
-        if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
-            std::process::exit(0);
-        }
+        // Read keys: in addition to channel input.
+        handle_keyboard_intput(&mut simulation);
 
         // Update simulation - returns collision events
         let collision_events = update_simulation(&mut simulation);
@@ -116,81 +77,10 @@ async fn main() {
         // Draw everything
         graphics.draw();
 
-        // Draw creep count with types
-        let green_count = simulation
-            .creeps
-            .iter()
-            .filter(|c| matches!(c.creep_type, simulation::CreepType::Green))
-            .count();
-        let red_count = simulation
-            .creeps
-            .iter()
-            .filter(|c| matches!(c.creep_type, simulation::CreepType::Red))
-            .count();
-        draw_text(
-            format!("Green creeps: {} (+1.0)", green_count).as_str(),
-            20.0,
-            140.0,
-            20.0,
-            GREEN,
-        );
-        draw_text(
-            format!("Red creeps: {} (-1.0)", red_count).as_str(),
-            20.0,
-            160.0,
-            20.0,
-            RED,
-        );
+        draw_red_green_count(&mut simulation);
+        draw_controls_and_status(&mut simulation);
 
-        // Draw controls and status
-        draw_text("Controls:", 20.0, 20.0, 20.0, WHITE);
-        draw_text("Arrow keys / WASD: Move", 20.0, 40.0, 20.0, WHITE);
-        draw_text("Space: Pause/Resume", 20.0, 60.0, 20.0, WHITE);
-        draw_text("ESC or Q: Quit", 20.0, 80.0, 20.0, WHITE);
-        draw_text(
-            format!("Creeps: {}", simulation.creeps.len()).as_str(),
-            20.0,
-            100.0,
-            20.0,
-            WHITE,
-        );
-        draw_text(
-            format!("Score: {}", simulation.score).as_str(),
-            20.0,
-            120.0,
-            20.0,
-            Color::new(0.0, 1.0, 1.0, 1.0), // Cyan for score
-        );
-
-        // Draw pause status - big and clear
-        if simulation.paused {
-            draw_text(
-                "SIMULATION FROZEN - Press SPACE to resume",
-                SCREEN_WIDTH / 2.0 - 170.0,
-                SCREEN_HEIGHT / 2.0,
-                20.0,
-                YELLOW,
-            );
-        }
-
-        // Draw reset completion message
-        let reset_alpha = graphics.get_reset_alpha();
-        if reset_alpha > 0.0 {
-            let message = "All Green Creeps Collected! Creeps Reset";
-            let text_width = measure_text(message, None, 20, 1.0).width;
-            draw_text(
-                message,
-                SCREEN_WIDTH / 2.0 - text_width / 2.0,
-                SCREEN_HEIGHT / 2.0 - 50.0,
-                20.0,
-                Color {
-                    r: 0.0,
-                    g: 1.0,
-                    b: 0.0,
-                    a: reset_alpha,
-                },
-            );
-        }
+        draw_completion_message_when_green_reset(&mut graphics);
 
         // Draw box boundaries
         draw_rectangle_lines(
@@ -203,5 +93,129 @@ async fn main() {
         );
 
         next_frame().await;
+    }
+}
+
+fn draw_red_green_count(simulation: &mut Simulation) {
+    // Draw creep count with types
+    let green_count = simulation
+        .creeps
+        .iter()
+        .filter(|c| matches!(c.creep_type, simulation::CreepType::Green))
+        .count();
+    let red_count = simulation
+        .creeps
+        .iter()
+        .filter(|c| matches!(c.creep_type, simulation::CreepType::Red))
+        .count();
+    draw_text(
+        format!("Green creeps: {} (+1.0)", green_count).as_str(),
+        20.0,
+        140.0,
+        20.0,
+        GREEN,
+    );
+    draw_text(
+        format!("Red creeps: {} (-1.0)", red_count).as_str(),
+        20.0,
+        160.0,
+        20.0,
+        RED,
+    );
+}
+/// Draw information about simulation: controls and if simulation is paused.
+fn draw_controls_and_status(simulation: &mut Simulation) {
+    // Draw controls and status
+    draw_text("Controls:", 20.0, 20.0, 20.0, WHITE);
+    draw_text("Arrow keys / WASD: Move", 20.0, 40.0, 20.0, WHITE);
+    draw_text("Space: Pause/Resume", 20.0, 60.0, 20.0, WHITE);
+    draw_text("ESC or Q: Quit", 20.0, 80.0, 20.0, WHITE);
+    draw_text(
+        format!("Creeps: {}", simulation.creeps.len()).as_str(),
+        20.0,
+        100.0,
+        20.0,
+        WHITE,
+    );
+    draw_text(
+        format!("Score: {}", simulation.score).as_str(),
+        20.0,
+        120.0,
+        20.0,
+        Color::new(0.0, 1.0, 1.0, 1.0), // Cyan for score
+    );
+
+    // Draw pause status - big and clear
+    if simulation.paused {
+        draw_text(
+            "SIMULATION FROZEN - Press SPACE to resume",
+            SCREEN_WIDTH / 2.0 - 170.0,
+            SCREEN_HEIGHT / 2.0,
+            20.0,
+            YELLOW,
+        );
+    }
+}
+/// Handle keyboard input for acceleration and pausing etc
+fn handle_keyboard_intput(simulation: &mut Simulation) {
+    // Handle input - WASD and Arrow keys for movement
+
+    if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
+        simulation.entity.accelerate_left();
+    }
+    if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
+        simulation.entity.accelerate_right();
+    }
+    if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
+        simulation.entity.accelerate_up();
+    }
+    if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
+        simulation.entity.accelerate_down();
+    }
+
+    // Toggle pause with Space
+    if is_key_pressed(KeyCode::Space) {
+        simulation.paused = !simulation.paused;
+    }
+
+    // Quit with ESC or Q
+    if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
+        std::process::exit(0);
+    }
+}
+/// Draw reset completion message after last green
+fn draw_completion_message_when_green_reset(graphics: &mut graphics::SimulationGraphics) {
+    let reset_alpha = graphics.get_reset_alpha() * 2.0;
+    if reset_alpha > 0.0 {
+        let message = "All Green Creeps Collected! Creeps Reset";
+        let text_width = measure_text(message, None, 20, 1.0).width;
+        draw_text(
+            message,
+            SCREEN_WIDTH / 2.0 - text_width / 2.0,
+            SCREEN_HEIGHT / 2.0 - 50.0,
+            20.0,
+            Color {
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                a: reset_alpha,
+            },
+        );
+    }
+}
+/// Special graphical feedback when all green are eaten: flash background white
+fn flash_bakground_white_if_timer(graphics: &mut graphics::SimulationGraphics) {
+    // Flash background white if flash timer is active
+    let flash_intensity = graphics.get_flash_intensity();
+    if flash_intensity > 0.0 {
+        let bg_color = Color {
+            r: flash_intensity,
+            g: flash_intensity,
+            b: flash_intensity,
+            a: 1.0,
+        };
+        clear_background(bg_color);
+    } else {
+        clear_background(BLACK);
     }
 }

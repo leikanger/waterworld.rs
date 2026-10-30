@@ -6,6 +6,7 @@ const CREEP_RADIUS: f64 = 0.15;
 const BOUNCE_COEFFICIENT: f64 = 0.8;
 const FRICTION: f64 = 0.99;
 const NUMBER_OF_CREEPS: u32 = 5;
+const ACCELERATION: f64 = 0.01;
 
 use rand::Rng;
 
@@ -16,6 +17,22 @@ pub struct Entity {
     pub y: f64,
     pub vx: f64,
     pub vy: f64,
+}
+
+impl Entity {
+    pub fn accelerate_up(&mut self) {
+        self.vy -= ACCELERATION;
+    }
+    pub fn accelerate_down(&mut self) {
+        self.vy += ACCELERATION;
+    }
+
+    pub fn accelerate_left(&mut self) {
+        self.vx -= ACCELERATION;
+    }
+    pub fn accelerate_right(&mut self) {
+        self.vx += ACCELERATION;
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -249,19 +266,6 @@ pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
     collision_events
 }
 
-// Handle keyboard input
-pub fn handle_input(simulation: &mut Simulation, input: &str) {
-    match input {
-        "up" => simulation.entity.vy -= 0.1,
-        "down" => simulation.entity.vy += 0.1,
-        "left" => simulation.entity.vx -= 0.1,
-        "right" => simulation.entity.vx += 0.1,
-        "space" => simulation.paused = !simulation.paused,
-        "escape" => std::process::exit(0),
-        _ => (),
-    }
-}
-
 // Getters for simulation constants (useful for graphics scaling)
 #[allow(unused)]
 pub fn get_box_width() -> f64 {
@@ -396,29 +400,6 @@ mod tests {
             .unwrap();
         assert_eq!(red_creep.vx, initial_vx);
         assert_eq!(red_creep.vy, initial_vy);
-    }
-
-    #[test]
-    fn test_handle_input() {
-        let mut sim = init_simulation();
-
-        handle_input(&mut sim, "up");
-        assert_eq!(sim.entity.vy, -0.1);
-
-        handle_input(&mut sim, "down");
-        assert_eq!(sim.entity.vy, 0.0);
-
-        handle_input(&mut sim, "left");
-        assert_eq!(sim.entity.vx, -0.1);
-
-        handle_input(&mut sim, "right");
-        assert_eq!(sim.entity.vx, 0.0);
-
-        handle_input(&mut sim, "space");
-        assert!(sim.paused);
-
-        handle_input(&mut sim, "space");
-        assert!(!sim.paused);
     }
 
     #[test]
