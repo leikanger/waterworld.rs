@@ -9,17 +9,29 @@ use graphics::*;
 const SCREEN_WIDTH: f32 = 800.0;
 const SCREEN_HEIGHT: f32 = 600.0;
 const SCALE: f32 = 50.0;
+const ENTITY_SCALE: f32 = 50.0;
+const CREEP_SCALE: f32 = 50.0;
 
 #[macroquad::main("NeoRL Simulator")]
 async fn main() {
     let mut simulation = init_simulation();
     let mut graphics = SimulationGraphics::new();
 
+    // Add the player unit (scaled to screen coordinates)
     graphics.add_unit(
-        (simulation.entity.x as f32 - 5.0) * SCALE + SCREEN_WIDTH / 2.0,
-        (simulation.entity.y as f32 - 5.0) * SCALE + SCREEN_HEIGHT / 2.0,
+        (simulation.entity.x as f32 - 5.0) * ENTITY_SCALE + SCREEN_WIDTH / 2.0,
+        (simulation.entity.y as f32 - 5.0) * ENTITY_SCALE + SCREEN_HEIGHT / 2.0,
         RED,
     );
+
+    // Add creeps
+    for creep in &simulation.creeps {
+        graphics.add_creep(
+            (creep.x as f32 - 5.0) * CREEP_SCALE + SCREEN_WIDTH / 2.0,
+            (creep.y as f32 - 5.0) * CREEP_SCALE + SCREEN_HEIGHT / 2.0,
+            BLUE,
+        );
+    }
 
     loop {
         clear_background(BLACK);
@@ -58,12 +70,23 @@ async fn main() {
         // Update simulation
         update_simulation(&mut simulation);
 
-        // Update graphics
+        // Update player graphics
         if let Some(unit) = graphics.units.first_mut() {
-            unit.x = (simulation.entity.x as f32 - 5.0) * SCALE + SCREEN_WIDTH / 2.0;
-            unit.y = (simulation.entity.y as f32 - 5.0) * SCALE + SCREEN_HEIGHT / 2.0;
+            unit.x = (simulation.entity.x as f32 - 5.0) * ENTITY_SCALE + SCREEN_WIDTH / 2.0;
+            unit.y = (simulation.entity.y as f32 - 5.0) * ENTITY_SCALE + SCREEN_HEIGHT / 2.0;
         }
 
+        // Update creep graphics
+        graphics.clear_creeps();
+        for creep in &simulation.creeps {
+            graphics.add_creep(
+                (creep.x as f32 - 5.0) * CREEP_SCALE + SCREEN_WIDTH / 2.0,
+                (creep.y as f32 - 5.0) * CREEP_SCALE + SCREEN_HEIGHT / 2.0,
+                BLUE,
+            );
+        }
+
+        // Draw everything
         graphics.draw();
 
         // Draw controls and status
@@ -71,6 +94,13 @@ async fn main() {
         draw_text("Arrow keys / WASD: Move", 20.0, 40.0, 20.0, WHITE);
         draw_text("Space: Pause/Resume", 20.0, 60.0, 20.0, WHITE);
         draw_text("ESC or Q: Quit", 20.0, 80.0, 20.0, WHITE);
+        draw_text(
+            format!("Creeps: {}", simulation.creeps.len()).as_str(),
+            20.0,
+            100.0,
+            20.0,
+            WHITE,
+        );
 
         // Draw pause status - big and clear
         if simulation.paused {
