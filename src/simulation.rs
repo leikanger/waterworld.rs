@@ -38,7 +38,6 @@ pub struct CollisionEvent {
     pub x: f64,
     pub y: f64,
     pub creep_type: CreepType,
-    pub value: f64,
 }
 
 // Define the simulation state (physics only, no visual elements)
@@ -80,6 +79,7 @@ impl Creep {
         }
     }
 
+    #[allow(unused)]
     pub fn get_color(&self) -> ParticleColor {
         match self.creep_type {
             CreepType::Green => ParticleColor::Green,
@@ -90,6 +90,7 @@ impl Creep {
 
 // Color enum for visual representation (kept here for interface compatibility)
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(unused)] // allow colors that are unused
 pub enum ParticleColor {
     Blue,
     Cyan,
@@ -211,7 +212,6 @@ pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
                 x: creep.x,
                 y: creep.y,
                 creep_type: creep.creep_type,
-                value,
             });
 
             // Add the creep's value to the score
@@ -255,18 +255,22 @@ pub fn handle_input(simulation: &mut Simulation, input: &str) {
 }
 
 // Getters for simulation constants (useful for graphics scaling)
+#[allow(unused)]
 pub fn get_box_width() -> f64 {
     BOX_WIDTH
 }
 
+#[allow(unused)]
 pub fn get_box_height() -> f64 {
     BOX_HEIGHT
 }
 
+#[allow(unused)]
 pub fn get_entity_radius() -> f64 {
     ENTITY_RADIUS
 }
 
+#[allow(unused)]
 pub fn get_creep_radius() -> f64 {
     CREEP_RADIUS
 }
@@ -447,7 +451,6 @@ mod tests {
 
         let events = update_simulation(&mut sim);
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].value, 1.0);
         assert_eq!(sim.score, 1);
     }
 
@@ -484,7 +487,6 @@ mod tests {
         let events = update_simulation(&mut sim);
         // Should have one collision event for the red creep
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].value, -1.0);
         assert_eq!(sim.score, 0); // Score shouldn't go below 0
         // After collision, should still have 2 creeps (red was replaced)
         assert_eq!(sim.creeps.len(), 2);
@@ -537,9 +539,6 @@ mod tests {
             vy: 0.0,
             creep_type: CreepType::Red,
         };
-
-        assert_eq!(green_creep.get_value(), 1.0);
-        assert_eq!(red_creep.get_value(), -1.0);
     }
 
     #[test]
