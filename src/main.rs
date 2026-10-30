@@ -94,7 +94,7 @@ async fn main() {
             graphics.trigger_all_green_completed();
             trigger_all_green_effect = true;
         }
-        
+
         // Reset the flag after triggering
         if trigger_all_green_effect && graphics.get_reset_alpha() <= 0.0 {
             trigger_all_green_effect = false;

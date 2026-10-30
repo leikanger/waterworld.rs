@@ -1,5 +1,5 @@
-use macroquad::prelude::*;
 use ::rand::Rng;
+use macroquad::prelude::*;
 
 // Visual representation structs
 #[derive(Clone, Copy, Debug)]
@@ -21,7 +21,6 @@ pub struct CreepUnit {
 pub struct ParticleUnit {
     pub x: f32,
     pub y: f32,
-    pub size: f32,
     pub color: Color,
     pub vx: f32,
     pub vy: f32,
@@ -73,14 +72,13 @@ impl VisualEffects {
             // Random color: mostly the specified color with some variation
             let particle_color = match rng.gen_range(0..10) {
                 0..=7 => color,
-                8 => WHITE, // Some white particles for highlight
+                8 => WHITE,                          // Some white particles for highlight
                 _ => Color::new(0.0, 1.0, 1.0, 1.0), // Some cyan particles for variation
             };
 
             self.particles.push(ParticleUnit {
                 x,
                 y,
-                size: 3.0,
                 color: particle_color,
                 vx: vx as f32,
                 vy: vy as f32,
@@ -102,7 +100,7 @@ impl VisualEffects {
     }
 
     pub fn trigger_flash(&mut self) {
-        self.flash_timer = 0.5; // Flash for 0.5 seconds
+        self.flash_timer = 0.3; // Flash for this duration in [s]
     }
 
     pub fn trigger_reset_message(&mut self) {
@@ -139,7 +137,7 @@ impl VisualEffects {
     pub fn draw(&self) {
         // Draw particles with alpha based on their lifetime
         for particle in &self.particles {
-            let alpha = (particle.life / particle.max_life) as f32;
+            let alpha = particle.life / particle.max_life;
             let size = 3.0 * (1.0 - alpha * 0.7); // Particles shrink as they fade
 
             let particle_color = Color {
@@ -154,7 +152,7 @@ impl VisualEffects {
 
         // Draw sound waves as semi-transparent rings
         for wave in &self.sound_waves {
-            let alpha = (wave.life / wave.max_life) as f32;
+            let alpha = wave.life / wave.max_life;
             let wave_color = Color {
                 r: wave.color.r,
                 g: wave.color.g,
@@ -168,7 +166,7 @@ impl VisualEffects {
 
     pub fn get_flash_intensity(&self) -> f32 {
         if self.flash_timer > 0.0 {
-            (self.flash_timer * 10.0).sin().abs() as f32
+            (self.flash_timer * 10.0).sin().abs()
         } else {
             0.0
         }
@@ -176,7 +174,7 @@ impl VisualEffects {
 
     pub fn get_reset_alpha(&self) -> f32 {
         if self.reset_timer > 0.0 {
-            (self.reset_timer / 2.0).min(1.0) as f32
+            (self.reset_timer / 2.0).min(1.0)
         } else {
             0.0
         }
@@ -203,16 +201,9 @@ impl SimulationGraphics {
         self.units.push(Unit { x, y, color });
     }
 
-    pub fn update_unit(&mut self, index: usize, x: f32, y: f32) {
-        if let Some(unit) = self.units.get_mut(index) {
-            unit.x = x;
-            unit.y = y;
-        }
-    }
-
     pub fn update_creeps(&mut self, creeps: &[super::simulation::Creep], scale: f32, offset_x: f32, offset_y: f32) {
         self.creeps.clear();
-        
+
         for creep in creeps {
             // Get base color based on creep type
             let base_color = match creep.creep_type {
@@ -231,24 +222,22 @@ impl SimulationGraphics {
         }
     }
 
-    pub fn add_creep(&mut self, x: f32, y: f32, color: Color) {
-        self.creeps.push(CreepUnit { x, y, color, hit_timer: 0.0 });
-    }
-
-    pub fn clear_creeps(&mut self) {
-        self.creeps.clear();
-    }
-
-    pub fn handle_collision_event(&mut self, event: &super::simulation::CollisionEvent, scale: f32, offset_x: f32, offset_y: f32) {
+    pub fn handle_collision_event(
+        &mut self,
+        event: &super::simulation::CollisionEvent,
+        scale: f32,
+        offset_x: f32,
+        offset_y: f32,
+    ) {
         // Create explosion particles at collision position
         let color = match event.creep_type {
             super::simulation::CreepType::Green => GREEN,
             super::simulation::CreepType::Red => RED,
         };
-        
+
         let screen_x = (event.x as f32 - 5.0) * scale + offset_x;
         let screen_y = (event.y as f32 - 5.0) * scale + offset_y;
-        
+
         self.visual_effects.add_explosion(screen_x, screen_y, color);
         self.visual_effects.add_sound_wave(screen_x, screen_y);
     }
@@ -274,7 +263,7 @@ impl SimulationGraphics {
             let mut creep_color = creep.color;
             if creep.hit_timer > 0.0 {
                 let pulse_factor = (creep.hit_timer * 5.0).sin().abs();
-                let white_factor = pulse_factor as f32;
+                let white_factor = pulse_factor;
                 creep_color = Color {
                     r: creep.color.r * (1.0 - white_factor) + WHITE.r * white_factor,
                     g: creep.color.g * (1.0 - white_factor) + WHITE.g * white_factor,

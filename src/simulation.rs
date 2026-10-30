@@ -5,6 +5,7 @@ const ENTITY_RADIUS: f64 = 0.2;
 const CREEP_RADIUS: f64 = 0.15;
 const BOUNCE_COEFFICIENT: f64 = 0.8;
 const FRICTION: f64 = 0.99;
+const NUMBER_OF_CREEPS: u32 = 5;
 
 use rand::Rng;
 
@@ -52,6 +53,16 @@ pub struct Simulation {
 impl Default for Simulation {
     fn default() -> Self {
         init_simulation()
+    }
+}
+
+impl Simulation {
+    fn respawn_creeps(&mut self) {
+        self.creeps.clear();
+        // Add same number of creeps
+        for _ in 0..NUMBER_OF_CREEPS {
+            self.creeps.push(Creep::new_random());
+        }
     }
 }
 
@@ -114,10 +125,7 @@ pub fn init_simulation() -> Simulation {
         all_green_completed: false,
     };
 
-    // Add some creeps
-    for _ in 0..5 {
-        simulation.creeps.push(Creep::new_random());
-    }
+    simulation.respawn_creeps();
 
     simulation
 }
@@ -139,12 +147,12 @@ pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
             .creeps
             .iter()
             .any(|c| matches!(c.creep_type, CreepType::Green));
-        // Only trigger if there are no green creeps and creeps exist
         // This assumes that at least one green creep was present initially
         if !has_green && !simulation.creeps.is_empty() {
             // All green creeps are gone - mark as completed
             // The actual reset will be handled by the graphics/UI layer
             simulation.all_green_completed = true;
+            simulation.respawn_creeps();
         }
     }
 
@@ -497,7 +505,7 @@ mod tests {
         let mut sim = init_simulation();
         // Replace all creeps with red ones
         sim.creeps.clear();
-        for _ in 0..3 {
+        for _ in 0..NUMBER_OF_CREEPS {
             sim.creeps.push(Creep {
                 x: 1.0,
                 y: 1.0,
@@ -512,7 +520,7 @@ mod tests {
 
         // Should trigger reset since no green creeps
         assert!(sim.all_green_completed);
-        assert_eq!(sim.creeps.len(), 3); // Reset to 3 creeps
+        assert_eq!(sim.creeps.len(), 5); // Reset to 3 creeps
     }
 
     #[test]
@@ -521,24 +529,6 @@ mod tests {
         assert_eq!(get_box_height(), BOX_HEIGHT);
         assert_eq!(get_entity_radius(), ENTITY_RADIUS);
         assert_eq!(get_creep_radius(), CREEP_RADIUS);
-    }
-
-    #[test]
-    fn test_creep_get_value() {
-        let green_creep = Creep {
-            x: 0.0,
-            y: 0.0,
-            vx: 0.0,
-            vy: 0.0,
-            creep_type: CreepType::Green,
-        };
-        let red_creep = Creep {
-            x: 0.0,
-            y: 0.0,
-            vx: 0.0,
-            vy: 0.0,
-            creep_type: CreepType::Red,
-        };
     }
 
     #[test]
