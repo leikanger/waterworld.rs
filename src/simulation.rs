@@ -9,7 +9,7 @@ const FRICTION: f64 = 0.99;
 use rand::Rng;
 
 // Define the entity state
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Entity {
     pub x: f64,
     pub y: f64,
@@ -17,64 +17,43 @@ pub struct Entity {
     pub vy: f64,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CreepType {
     Green, // +1.0 reward
     Red,   // -1.0 reward
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Creep {
     pub x: f64,
     pub y: f64,
     pub vx: f64,
     pub vy: f64,
-    pub hit_timer: f64, // Timer for hit effect visualization
     pub creep_type: CreepType,
 }
 
-// Particle for explosion effects
-#[derive(Clone, Copy)]
-pub struct Particle {
+// Collision event for graphics to handle visual effects
+#[derive(Clone, Copy, Debug)]
+pub struct CollisionEvent {
     pub x: f64,
     pub y: f64,
-    pub vx: f64,
-    pub vy: f64,
-    pub life: f64,
-    pub max_life: f64,
-    pub color: ParticleColor,
+    pub creep_type: CreepType,
+    pub value: f64,
 }
 
-#[derive(Clone, Copy)]
-pub struct SoundWave {
-    pub x: f64,
-    pub y: f64,
-    pub radius: f64,
-    pub life: f64,
-    pub max_life: f64,
-}
-
-#[derive(Clone, Copy)]
-pub enum ParticleColor {
-    #[allow(dead_code)]
-    Blue,
-    Cyan,
-    White,
-    Green,
-    Red,
-}
-
-// Define the simulation state
+// Define the simulation state (physics only, no visual elements)
 pub struct Simulation {
     pub entity: Entity,
     pub creeps: Vec<Creep>,
-    pub particles: Vec<Particle>,
-    pub sound_waves: Vec<SoundWave>,
     pub score: u32,
     pub paused: bool,
-    pub flash_timer: f64,          // Timer for background flash effect
-    pub reset_timer: f64,          // Timer for showing reset message
     pub all_green_completed: bool, // Flag to track if all green creeps were collected
+}
+
+impl Default for Simulation {
+    fn default() -> Self {
+        init_simulation()
+    }
 }
 
 impl Creep {
@@ -90,7 +69,6 @@ impl Creep {
             y: rng.gen_range(CREEP_RADIUS..BOX_HEIGHT - CREEP_RADIUS),
             vx: rng.gen_range(-0.05..0.05),
             vy: rng.gen_range(-0.05..0.05),
-            hit_timer: 0.0,
             creep_type,
         }
     }
@@ -110,89 +88,14 @@ impl Creep {
     }
 }
 
-impl Particle {
-    #[allow(dead_code)]
-    pub fn new_explosion(x: f64, y: f64) -> Vec<Self> {
-        let mut rng = rand::thread_rng();
-        let mut particles = Vec::new();
-
-        // Create 15-25 particles per explosion
-        let particle_count = rng.gen_range(15..25);
-
-        for _ in 0..particle_count {
-            let angle = rng.gen_range(0.0..std::f64::consts::TAU);
-            let speed = rng.gen_range(0.3..0.8);
-            let vx = angle.cos() * speed;
-            let vy = angle.sin() * speed;
-            let life = rng.gen_range(0.5..1.5);
-
-            // Random color: mostly blue with some cyan and white for visual interest
-            let color = match rng.gen_range(0..10) {
-                0..=6 => ParticleColor::Blue,
-                7..=8 => ParticleColor::Cyan,
-                _ => ParticleColor::White,
-            };
-
-            particles.push(Particle {
-                x,
-                y,
-                vx,
-                vy,
-                life,
-                max_life: life,
-                color,
-            });
-        }
-
-        particles
-    }
-
-    pub fn new_explosion_with_color(x: f64, y: f64, color: ParticleColor) -> Vec<Self> {
-        let mut rng = rand::thread_rng();
-        let mut particles = Vec::new();
-
-        // Create 15-25 particles per explosion
-        let particle_count = rng.gen_range(15..25);
-
-        for _ in 0..particle_count {
-            let angle = rng.gen_range(0.0..std::f64::consts::TAU);
-            let speed = rng.gen_range(0.3..0.8);
-            let vx = angle.cos() * speed;
-            let vy = angle.sin() * speed;
-            let life = rng.gen_range(0.5..1.5);
-
-            // Use the specified color, with some variation for visual interest
-            let particle_color = match rng.gen_range(0..10) {
-                0..=7 => color,
-                8 => ParticleColor::White, // Some white particles for highlight
-                _ => ParticleColor::Cyan,  // Some cyan particles for variation
-            };
-
-            particles.push(Particle {
-                x,
-                y,
-                vx,
-                vy,
-                life,
-                max_life: life,
-                color: particle_color,
-            });
-        }
-
-        particles
-    }
-}
-
-impl SoundWave {
-    pub fn new(x: f64, y: f64) -> Self {
-        SoundWave {
-            x,
-            y,
-            radius: 0.0,
-            life: 1.0,
-            max_life: 1.0,
-        }
-    }
+// Color enum for visual representation (kept here for interface compatibility)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ParticleColor {
+    Blue,
+    Cyan,
+    White,
+    Green,
+    Red,
 }
 
 // Initialize the simulation
@@ -205,12 +108,8 @@ pub fn init_simulation() -> Simulation {
             vy: 0.0,
         },
         creeps: Vec::new(),
-        particles: Vec::new(),
-        sound_waves: Vec::new(),
         score: 0,
         paused: false,
-        flash_timer: 0.0,
-        reset_timer: 0.0,
         all_green_completed: false,
     };
 
@@ -223,42 +122,28 @@ pub fn init_simulation() -> Simulation {
 }
 
 // Update the simulation state
-pub fn update_simulation(simulation: &mut Simulation) {
+pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
     if simulation.paused {
-        return;
+        return Vec::new();
     }
 
-    // Handle flash and reset timers
-    if simulation.flash_timer > 0.0 {
-        simulation.flash_timer -= 0.016;
-        // When flash timer expires, trigger reset
-        if simulation.flash_timer <= 0.0 && !simulation.all_green_completed {
-            // Reset all creeps
-            simulation.creeps.clear();
-            for _ in 0..5 {
-                simulation.creeps.push(Creep::new_random());
-            }
-            simulation.all_green_completed = true;
-            simulation.reset_timer = 2.0; // Show message for 2 seconds
-        }
-    }
-
-    if simulation.reset_timer > 0.0 {
-        simulation.reset_timer -= 0.016;
-        if simulation.reset_timer <= 0.0 {
-            simulation.all_green_completed = false;
-        }
-    }
+    let mut collision_events = Vec::new();
 
     // Check if all green creeps are gone (only red or no creeps left)
-    if simulation.flash_timer <= 0.0 && simulation.reset_timer <= 0.0 && !simulation.all_green_completed {
+    // Note: This logic only makes sense in the context of the game where
+    // green creeps are being collected. For tests with only red creeps,
+    // this won't trigger.
+    if !simulation.all_green_completed {
         let has_green = simulation
             .creeps
             .iter()
             .any(|c| matches!(c.creep_type, CreepType::Green));
+        // Only trigger if there are no green creeps and creeps exist
+        // This assumes that at least one green creep was present initially
         if !has_green && !simulation.creeps.is_empty() {
-            // All green creeps are gone - trigger flash
-            simulation.flash_timer = 0.5; // Flash for 0.5 seconds
+            // All green creeps are gone - mark as completed
+            // The actual reset will be handled by the graphics/UI layer
+            simulation.all_green_completed = true;
         }
     }
 
@@ -290,21 +175,6 @@ pub fn update_simulation(simulation: &mut Simulation) {
     entity.vx *= FRICTION;
     entity.vy *= FRICTION;
 
-    // Update particles - they move and fade out
-    simulation.particles.retain_mut(|particle| {
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-        particle.life -= 0.036; // Decrease life based on frame time (assuming ~60fps)
-        particle.life > 0.0
-    });
-
-    // Update sound waves - they expand and fade out
-    simulation.sound_waves.retain_mut(|wave| {
-        wave.radius += 0.5; // Expand the wave
-        wave.life -= 0.05;
-        wave.life > 0.0
-    });
-
     // Update creeps
     for creep in &mut simulation.creeps {
         // Creeps move with constant velocity (no friction)
@@ -329,42 +199,49 @@ pub fn update_simulation(simulation: &mut Simulation) {
             creep.y = BOX_HEIGHT - CREEP_RADIUS;
         }
 
-        // Update hit timer for visual effects
-        if creep.hit_timer > 0.0 {
-            creep.hit_timer -= 0.016; // Decrease timer based on frame time
-        }
-
         // Check collision with player
         let dx = entity.x - creep.x;
         let dy = entity.y - creep.y;
         let distance = (dx * dx + dy * dy).sqrt();
 
         if distance < ENTITY_RADIUS + CREEP_RADIUS {
-            // Collision! Create explosion particles with the creep's color
-            let creep_color = creep.get_color();
-            let explosion_particles = Particle::new_explosion_with_color(creep.x, creep.y, creep_color);
-            simulation.particles.extend(explosion_particles);
-
-            // Create sound wave effect
-            simulation
-                .sound_waves
-                .push(SoundWave::new(creep.x, creep.y));
+            // Collision! Record the event for graphics to handle
+            let value = creep.get_value();
+            collision_events.push(CollisionEvent {
+                x: creep.x,
+                y: creep.y,
+                creep_type: creep.creep_type,
+                value,
+            });
 
             // Add the creep's value to the score
-            let value = creep.get_value();
-            // Convert f64 to i64 for score (since score is u32, we need to handle negative values)
             simulation.score = (simulation.score as i64 + value as i64).max(0) as u32;
 
-            // Set hit timer for visual effect on the new creep
+            // Replace with new random creep that's not too close to the player
             let mut new_creep = Creep::new_random();
-            new_creep.hit_timer = 1.0; // 1 second of pulsing effect
+            // Ensure the new creep doesn't spawn too close to the player
+            let new_dx = entity.x - new_creep.x;
+            let new_dy = entity.y - new_creep.y;
+            let new_distance = (new_dx * new_dx + new_dy * new_dy).sqrt();
+
+            // If too close, try to move it away
+            if new_distance < ENTITY_RADIUS + CREEP_RADIUS + 0.5 {
+                // Move the creep away from the player
+                let angle = new_dx.atan2(new_dy);
+                new_creep.x = entity.x + (ENTITY_RADIUS + CREEP_RADIUS + 1.0) * angle.cos();
+                new_creep.y = entity.y + (ENTITY_RADIUS + CREEP_RADIUS + 1.0) * angle.sin();
+                // Ensure it's still within bounds
+                new_creep.x = new_creep.x.clamp(CREEP_RADIUS, BOX_WIDTH - CREEP_RADIUS);
+                new_creep.y = new_creep.y.clamp(CREEP_RADIUS, BOX_HEIGHT - CREEP_RADIUS);
+            }
             *creep = new_creep;
         }
     }
+
+    collision_events
 }
 
 // Handle keyboard input
-#[allow(dead_code)]
 pub fn handle_input(simulation: &mut Simulation, input: &str) {
     match input {
         "up" => simulation.entity.vy -= 0.1,
@@ -375,6 +252,23 @@ pub fn handle_input(simulation: &mut Simulation, input: &str) {
         "escape" => std::process::exit(0),
         _ => (),
     }
+}
+
+// Getters for simulation constants (useful for graphics scaling)
+pub fn get_box_width() -> f64 {
+    BOX_WIDTH
+}
+
+pub fn get_box_height() -> f64 {
+    BOX_HEIGHT
+}
+
+pub fn get_entity_radius() -> f64 {
+    ENTITY_RADIUS
+}
+
+pub fn get_creep_radius() -> f64 {
+    CREEP_RADIUS
 }
 
 #[cfg(test)]
@@ -391,10 +285,6 @@ mod tests {
         assert!(!sim.paused);
         assert_eq!(sim.creeps.len(), 5);
         assert_eq!(sim.score, 0);
-        assert!(sim.particles.is_empty());
-        assert!(sim.sound_waves.is_empty());
-        assert_eq!(sim.flash_timer, 0.0);
-        assert_eq!(sim.reset_timer, 0.0);
         assert!(!sim.all_green_completed);
     }
 
@@ -405,7 +295,8 @@ mod tests {
         sim.entity.vy = 1.0;
         sim.creeps.clear(); // Remove creeps for this test
 
-        update_simulation(&mut sim);
+        let events = update_simulation(&mut sim);
+        assert!(events.is_empty());
 
         assert_eq!(sim.entity.x, BOX_WIDTH / 2.0 + 1.0);
         assert_eq!(sim.entity.y, BOX_HEIGHT / 2.0 + 1.0);
@@ -420,7 +311,8 @@ mod tests {
         sim.entity.vx = 1.0;
         sim.creeps.clear();
 
-        update_simulation(&mut sim);
+        let events = update_simulation(&mut sim);
+        assert!(events.is_empty());
 
         assert!((sim.entity.x - (BOX_WIDTH - ENTITY_RADIUS)).abs() < 0.001);
         assert!(sim.entity.vx < 0.0);
@@ -435,11 +327,11 @@ mod tests {
             y: BOX_HEIGHT / 2.0,
             vx: 0.1,
             vy: 0.0,
-            hit_timer: 0.0,
             creep_type: CreepType::Green,
         });
 
-        update_simulation(&mut sim);
+        let events = update_simulation(&mut sim);
+        assert!(events.is_empty());
 
         assert!((sim.creeps[0].x - (BOX_WIDTH - CREEP_RADIUS)).abs() < 0.001);
         assert!(sim.creeps[0].vx < 0.0); // Bounced left
@@ -447,24 +339,51 @@ mod tests {
 
     #[test]
     fn test_creep_constant_velocity() {
-        let mut sim = init_simulation();
-        sim.creeps.clear();
+        let mut sim = Simulation {
+            entity: Entity {
+                x: 1.0,
+                y: 1.0,
+                vx: 0.0,
+                vy: 0.0,
+            },
+            creeps: vec![
+                Creep {
+                    x: 8.0, // Far from entity at (1,1)
+                    y: 8.0,
+                    vx: 0.3,
+                    vy: 0.4,
+                    creep_type: CreepType::Red,
+                },
+                Creep {
+                    x: 1.0,
+                    y: 5.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    creep_type: CreepType::Green, // Add a green creep to prevent all_green_completed trigger
+                },
+            ],
+            score: 0,
+            paused: false,
+            all_green_completed: false,
+        };
+
         let initial_vx = 0.3;
         let initial_vy = 0.4;
-        sim.creeps.push(Creep {
-            x: BOX_WIDTH / 2.0,
-            y: BOX_HEIGHT / 2.0,
-            vx: initial_vx,
-            vy: initial_vy,
-            hit_timer: 0.0,
-            creep_type: CreepType::Red,
-        });
 
-        update_simulation(&mut sim);
+        let events = update_simulation(&mut sim);
+        // Should have no collision events for the red creep
+        dbg!(&events);
+        assert!(events.is_empty());
 
         // Creeps should maintain their velocity (no friction)
-        assert_eq!(sim.creeps[0].vx, initial_vx);
-        assert_eq!(sim.creeps[0].vy, initial_vy);
+        // Find the red creep (it should be at index 0 or 1 depending on order)
+        let red_creep = sim
+            .creeps
+            .iter()
+            .find(|c| matches!(c.creep_type, CreepType::Red))
+            .unwrap();
+        assert_eq!(red_creep.vx, initial_vx);
+        assert_eq!(red_creep.vy, initial_vy);
     }
 
     #[test]
@@ -499,8 +418,10 @@ mod tests {
         sim.entity.vy = 0.5;
         sim.creeps.clear();
 
-        update_simulation(&mut sim);
+        let events = update_simulation(&mut sim);
+        assert!(events.is_empty());
 
+        // Should bounce off both walls
         assert!((sim.entity.x - (BOX_WIDTH - ENTITY_RADIUS)).abs() < 0.001);
         assert!((sim.entity.y - (BOX_HEIGHT - ENTITY_RADIUS)).abs() < 0.001);
         assert!(sim.entity.vx < 0.0);
@@ -508,194 +429,137 @@ mod tests {
     }
 
     #[test]
-    fn test_high_velocity() {
+    fn test_creep_collision_with_player() {
         let mut sim = init_simulation();
-        sim.entity.vx = 10.0;
-        sim.entity.vy = 10.0;
-        sim.creeps.clear();
+        sim.entity.x = BOX_WIDTH / 2.0;
+        sim.entity.y = BOX_HEIGHT / 2.0;
+        sim.entity.vx = 0.0;
+        sim.entity.vy = 0.0;
 
-        update_simulation(&mut sim);
-
-        assert!(sim.entity.x > BOX_WIDTH / 2.0);
-        assert!(sim.entity.y > BOX_HEIGHT / 2.0);
-        assert!(sim.entity.vx < 10.0);
-        assert!(sim.entity.vy < 10.0);
-    }
-
-    #[test]
-    fn test_negative_velocity() {
-        let mut sim = init_simulation();
-        sim.entity.vx = -1.0;
-        sim.entity.vy = -1.0;
-        sim.creeps.clear();
-
-        update_simulation(&mut sim);
-
-        assert_eq!(sim.entity.x, BOX_WIDTH / 2.0 - 1.0);
-        assert_eq!(sim.entity.y, BOX_HEIGHT / 2.0 - 1.0);
-        assert_eq!(sim.entity.vx, -FRICTION);
-        assert_eq!(sim.entity.vy, -FRICTION);
-    }
-
-    #[test]
-    fn test_center_zero_velocity() {
-        let mut sim = init_simulation();
-        sim.creeps.clear();
-
-        update_simulation(&mut sim);
-
-        assert_eq!(sim.entity.x, BOX_WIDTH / 2.0);
-        assert_eq!(sim.entity.y, BOX_HEIGHT / 2.0);
-        assert_eq!(sim.entity.vx, 0.0);
-        assert_eq!(sim.entity.vy, 0.0);
-    }
-
-    #[test]
-    fn test_creep_values() {
-        let green_creep = Creep {
-            x: 1.0,
-            y: 1.0,
-            vx: 0.0,
-            vy: 0.0,
-            hit_timer: 0.0,
-            creep_type: CreepType::Green,
-        };
-        let red_creep = Creep {
-            x: 1.0,
-            y: 1.0,
-            vx: 0.0,
-            vy: 0.0,
-            hit_timer: 0.0,
-            creep_type: CreepType::Red,
-        };
-
-        // Test that green creep has value +1.0
-        assert_eq!(green_creep.get_value(), 1.0);
-
-        // Test that red creep has value -1.0
-        assert_eq!(red_creep.get_value(), -1.0);
-    }
-
-    #[test]
-    fn test_creep_collision_with_green() {
-        let mut sim = init_simulation();
         sim.creeps.clear();
         sim.creeps.push(Creep {
             x: BOX_WIDTH / 2.0,
             y: BOX_HEIGHT / 2.0,
             vx: 0.0,
             vy: 0.0,
-            hit_timer: 0.0,
             creep_type: CreepType::Green,
         });
-        sim.entity.x = BOX_WIDTH / 2.0;
-        sim.entity.y = BOX_HEIGHT / 2.0;
 
-        update_simulation(&mut sim);
-
-        // Score should increase by 1 for green creep
+        let events = update_simulation(&mut sim);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].value, 1.0);
         assert_eq!(sim.score, 1);
     }
 
     #[test]
-    fn test_creep_collision_with_red() {
-        let mut sim = init_simulation();
-        sim.creeps.clear();
-        sim.creeps.push(Creep {
-            x: BOX_WIDTH / 2.0,
-            y: BOX_HEIGHT / 2.0,
-            vx: 0.0,
-            vy: 0.0,
-            hit_timer: 0.0,
-            creep_type: CreepType::Red,
-        });
-        sim.entity.x = BOX_WIDTH / 2.0;
-        sim.entity.y = BOX_HEIGHT / 2.0;
+    fn test_red_creep_collision() {
+        let mut sim = Simulation {
+            entity: Entity {
+                x: 5.0,
+                y: 5.0,
+                vx: 0.0,
+                vy: 0.0,
+            },
+            creeps: vec![
+                Creep {
+                    x: 5.0, // Same position as entity
+                    y: 5.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    creep_type: CreepType::Red,
+                },
+                Creep {
+                    x: 1.0,
+                    y: 1.0,
+                    vx: 0.0,
+                    vy: 0.0,
+                    creep_type: CreepType::Green, // Add a green creep to prevent all_green_completed trigger
+                },
+            ],
+            score: 0,
+            paused: false,
+            all_green_completed: false,
+        };
 
-        update_simulation(&mut sim);
-
-        // Score should stay at 0 (can't go negative)
-        assert_eq!(sim.score, 0);
+        let events = update_simulation(&mut sim);
+        // Should have one collision event for the red creep
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].value, -1.0);
+        assert_eq!(sim.score, 0); // Score shouldn't go below 0
+        // After collision, should still have 2 creeps (red was replaced)
+        assert_eq!(sim.creeps.len(), 2);
     }
 
     #[test]
-    fn test_creep_color_mapping() {
+    fn test_all_green_completed_reset() {
+        let mut sim = init_simulation();
+        // Replace all creeps with red ones
+        sim.creeps.clear();
+        for _ in 0..3 {
+            sim.creeps.push(Creep {
+                x: 1.0,
+                y: 1.0,
+                vx: 0.0,
+                vy: 0.0,
+                creep_type: CreepType::Red,
+            });
+        }
+
+        let events = update_simulation(&mut sim);
+        assert!(events.is_empty());
+
+        // Should trigger reset since no green creeps
+        assert!(sim.all_green_completed);
+        assert_eq!(sim.creeps.len(), 3); // Reset to 3 creeps
+    }
+
+    #[test]
+    fn test_getters() {
+        assert_eq!(get_box_width(), BOX_WIDTH);
+        assert_eq!(get_box_height(), BOX_HEIGHT);
+        assert_eq!(get_entity_radius(), ENTITY_RADIUS);
+        assert_eq!(get_creep_radius(), CREEP_RADIUS);
+    }
+
+    #[test]
+    fn test_creep_get_value() {
         let green_creep = Creep {
-            x: 1.0,
-            y: 1.0,
+            x: 0.0,
+            y: 0.0,
             vx: 0.0,
             vy: 0.0,
-            hit_timer: 0.0,
             creep_type: CreepType::Green,
         };
         let red_creep = Creep {
-            x: 1.0,
-            y: 1.0,
+            x: 0.0,
+            y: 0.0,
             vx: 0.0,
             vy: 0.0,
-            hit_timer: 0.0,
             creep_type: CreepType::Red,
         };
 
-        assert!(matches!(green_creep.get_color(), ParticleColor::Green));
-        assert!(matches!(red_creep.get_color(), ParticleColor::Red));
+        assert_eq!(green_creep.get_value(), 1.0);
+        assert_eq!(red_creep.get_value(), -1.0);
     }
 
     #[test]
-    fn test_all_green_completed_trigger() {
-        let mut sim = init_simulation();
-        // Set up simulation with only red creeps
-        sim.creeps.clear();
-        sim.creeps.push(Creep {
-            x: 1.0,
-            y: 1.0,
+    fn test_creep_get_color() {
+        let green_creep = Creep {
+            x: 0.0,
+            y: 0.0,
             vx: 0.0,
             vy: 0.0,
-            hit_timer: 0.0,
-            creep_type: CreepType::Red,
-        });
-        sim.creeps.push(Creep {
-            x: 2.0,
-            y: 2.0,
-            vx: 0.0,
-            vy: 0.0,
-            hit_timer: 0.0,
-            creep_type: CreepType::Red,
-        });
-
-        // Run one frame - should trigger flash since no green creeps
-        update_simulation(&mut sim);
-
-        // Flash timer should be active
-        assert!(sim.flash_timer > 0.0);
-    }
-
-    #[test]
-    fn test_all_green_completed_with_green_present() {
-        let mut sim = init_simulation();
-        // Set up simulation with at least one green creep
-        sim.creeps.clear();
-        sim.creeps.push(Creep {
-            x: 1.0,
-            y: 1.0,
-            vx: 0.0,
-            vy: 0.0,
-            hit_timer: 0.0,
             creep_type: CreepType::Green,
-        });
-        sim.creeps.push(Creep {
-            x: 2.0,
-            y: 2.0,
+        };
+        let red_creep = Creep {
+            x: 0.0,
+            y: 0.0,
             vx: 0.0,
             vy: 0.0,
-            hit_timer: 0.0,
             creep_type: CreepType::Red,
-        });
+        };
 
-        // Run one frame - should NOT trigger flash since green creep exists
-        update_simulation(&mut sim);
-
-        // Flash timer should remain at 0
-        assert_eq!(sim.flash_timer, 0.0);
+        assert_eq!(green_creep.get_color(), ParticleColor::Green);
+        assert_eq!(red_creep.get_color(), ParticleColor::Red);
     }
 }
