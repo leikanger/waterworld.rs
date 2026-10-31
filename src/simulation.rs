@@ -6,7 +6,7 @@ const CREEP_RADIUS: f64 = 0.15;
 const BOUNCE_COEFFICIENT: f64 = 0.8;
 const FRICTION: f64 = 0.99;
 const NUMBER_OF_CREEPS: u32 = 5;
-const ACCELERATION: f64 = 0.01;
+const ACCELERATION: f64 = 0.02;
 
 use rand::Rng;
 

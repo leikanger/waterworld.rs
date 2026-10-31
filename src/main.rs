@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration};
+
 use macroquad::prelude::*;
 
 mod simulation;
@@ -32,9 +34,11 @@ async fn main() {
     // Track if we need to trigger all green completed effect
     let mut trigger_all_green_effect = false;
 
+    const DELTA_TIME: f64 = 0.01;
     loop {
         // Get delta time for frame-independent updates
-        let delta_time = get_frame_time();
+        let start_time: f64 = get_time();
+        //let delta_time = get_frame_time();
 
         // after completion of all green: flash background for a timer.
         flash_bakground_white_if_timer(&mut graphics);
@@ -72,12 +76,12 @@ async fn main() {
         graphics.update_creeps(&simulation.creeps, CREEP_SCALE, OFFSET_X, OFFSET_Y);
 
         // Update visual effects
-        graphics.update(delta_time);
+        graphics.update(DELTA_TIME as f32);
 
         // Draw everything
         graphics.draw();
 
-        draw_red_green_count(&mut simulation);
+        //draw_red_green_count(&mut simulation);
         draw_controls_and_status(&mut simulation);
 
         draw_completion_message_when_green_reset(&mut graphics);
@@ -93,37 +97,15 @@ async fn main() {
         );
 
         next_frame().await;
+
+        // wait for set DELTA_TIME:
+        let remaining_time = DELTA_TIME - (get_time() - start_time);
+        if remaining_time > 0.0 {
+            sleep(Duration::from_secs_f64(remaining_time));
+        }
     }
 }
 
-fn draw_red_green_count(simulation: &mut Simulation) {
-    // Draw creep count with types
-    let green_count = simulation
-        .creeps
-        .iter()
-        .filter(|c| matches!(c.creep_type, simulation::CreepType::Green))
-        .count();
-    let red_count = simulation
-        .creeps
-        .iter()
-        .filter(|c| matches!(c.creep_type, simulation::CreepType::Red))
-        .count();
-    draw_text(
-        format!("Green creeps: {} (+1.0)", green_count).as_str(),
-        20.0,
-        140.0,
-        20.0,
-        GREEN,
-    );
-    draw_text(
-        format!("Red creeps: {} (-1.0)", red_count).as_str(),
-        20.0,
-        160.0,
-        20.0,
-        RED,
-    );
-}
-/// Draw information about simulation: controls and if simulation is paused.
 fn draw_controls_and_status(simulation: &mut Simulation) {
     // Draw controls and status
     draw_text("Controls:", 20.0, 20.0, 20.0, WHITE);
@@ -156,6 +138,35 @@ fn draw_controls_and_status(simulation: &mut Simulation) {
         );
     }
 }
+#[allow(unused)] // Not called: I find it too crowded in the GUI.
+fn draw_red_green_count(simulation: &mut Simulation) {
+    // Draw creep count with types
+    let green_count = simulation
+        .creeps
+        .iter()
+        .filter(|c| matches!(c.creep_type, simulation::CreepType::Green))
+        .count();
+    let red_count = simulation
+        .creeps
+        .iter()
+        .filter(|c| matches!(c.creep_type, simulation::CreepType::Red))
+        .count();
+    draw_text(
+        format!("Green creeps: {} (+1.0)", green_count).as_str(),
+        20.0,
+        140.0,
+        20.0,
+        GREEN,
+    );
+    draw_text(
+        format!("Red creeps: {} (-1.0)", red_count).as_str(),
+        20.0,
+        160.0,
+        20.0,
+        RED,
+    );
+}
+/// Draw information about simulation: controls and if simulation is paused.
 /// Handle keyboard input for acceleration and pausing etc
 fn handle_keyboard_intput(simulation: &mut Simulation) {
     // Handle input - WASD and Arrow keys for movement
