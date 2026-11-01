@@ -100,7 +100,7 @@ impl VisualEffects {
     }
 
     pub fn trigger_flash(&mut self) {
-        self.flash_timer = 0.3; // Flash for this duration in [s]
+        self.flash_timer = 0.2; // Flash for this duration in [s]
     }
 
     pub fn trigger_reset_message(&mut self) {
@@ -201,14 +201,14 @@ impl SimulationGraphics {
         self.units.push(Unit { x, y, color });
     }
 
-    pub fn update_creeps(&mut self, creeps: &[super::simulation::Creep], scale: f32, offset_x: f32, offset_y: f32) {
+    pub fn update_creeps(&mut self, creeps: &[crate::Creep], scale: f32, offset_x: f32, offset_y: f32) {
         self.creeps.clear();
 
         for creep in creeps {
             // Get base color based on creep type
             let base_color = match creep.creep_type {
-                super::simulation::CreepType::Green => GREEN,
-                super::simulation::CreepType::Red => RED,
+                crate::CreepType::Green => GREEN,
+                crate::CreepType::Red => RED,
             };
 
             // For now, creeps don't have hit_timer in simulation anymore
@@ -222,17 +222,11 @@ impl SimulationGraphics {
         }
     }
 
-    pub fn handle_collision_event(
-        &mut self,
-        event: &super::simulation::CollisionEvent,
-        scale: f32,
-        offset_x: f32,
-        offset_y: f32,
-    ) {
+    pub fn handle_collision_event(&mut self, event: &crate::CollisionEvent, scale: f32, offset_x: f32, offset_y: f32) {
         // Create explosion particles at collision position
         let color = match event.creep_type {
-            super::simulation::CreepType::Green => GREEN,
-            super::simulation::CreepType::Red => RED,
+            crate::CreepType::Green => GREEN,
+            crate::CreepType::Red => RED,
         };
 
         let screen_x = (event.x as f32 - 5.0) * scale + offset_x;
@@ -284,5 +278,22 @@ impl SimulationGraphics {
 
     pub fn get_reset_alpha(&self) -> f32 {
         self.visual_effects.get_reset_alpha()
+    }
+
+    /// Graphical feedback on completion of all greens: flash background white
+    pub fn flash_bakground_white_if_timer(&mut self) {
+        // Flash background white if flash timer is active
+        let flash_intensity = self.get_flash_intensity();
+        if flash_intensity > 0.0 {
+            let bg_color = Color {
+                r: flash_intensity,
+                g: flash_intensity,
+                b: flash_intensity,
+                a: 1.0,
+            };
+            clear_background(bg_color);
+        } else {
+            clear_background(BLACK);
+        }
     }
 }

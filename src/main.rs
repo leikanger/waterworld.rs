@@ -2,11 +2,11 @@ use std::{thread::sleep, time::Duration};
 
 use macroquad::prelude::*;
 
+mod rl;
 mod simulation;
-use simulation::*;
 
-mod graphics;
-use graphics::*;
+use rl::{Action, Config, Env};
+use simulation::*;
 
 const SCREEN_WIDTH: f32 = 800.0;
 const SCREEN_HEIGHT: f32 = 600.0;
@@ -16,74 +16,85 @@ const CREEP_SCALE: f32 = 50.0;
 const OFFSET_X: f32 = SCREEN_WIDTH / 2.0;
 const OFFSET_Y: f32 = SCREEN_HEIGHT / 2.0;
 
+mod graphics;
+use graphics::*;
+
 #[macroquad::main("NeoRL Simulator")]
 async fn main() {
-    let mut simulation = init_simulation();
+    let config = Config {
+        max_episode_steps: 10000,
+        dt: 0.01,
+        frame_skip: 1,
+    };
+
+    let mut env = Env::new(config);
+    let (_, _) = env.reset(None);
     let mut graphics = SimulationGraphics::new();
 
-    // Add the player unit (scaled to screen coordinates) - WHITE
+    // Add the player unit
     graphics.add_unit(
-        (simulation.entity.x as f32 - 5.0) * ENTITY_SCALE + OFFSET_X,
-        (simulation.entity.y as f32 - 5.0) * ENTITY_SCALE + OFFSET_Y,
+        (env.state().entity.x as f32 - 5.0) * ENTITY_SCALE + OFFSET_X,
+        (env.state().entity.y as f32 - 5.0) * ENTITY_SCALE + OFFSET_Y,
         WHITE,
     );
 
     // Initialize creep graphics
-    graphics.update_creeps(&simulation.creeps, CREEP_SCALE, OFFSET_X, OFFSET_Y);
+    graphics.update_creeps(&env.state().creeps, CREEP_SCALE, OFFSET_X, OFFSET_Y);
 
     // Track if we need to trigger all green completed effect
     let mut trigger_all_green_effect = false;
 
     const DELTA_TIME: f64 = 0.01;
     loop {
-        // Get delta time for frame-independent updates
         let start_time: f64 = get_time();
-        //let delta_time = get_frame_time();
 
-        // after completion of all green: flash background for a timer.
-        flash_bakground_white_if_timer(&mut graphics);
+        let action = handle_keyboard_intput();
 
-        // Read keys: in addition to channel input.
-        handle_keyboard_intput(&mut simulation);
+        // Step the environment
+        let result = env.step(action);
 
-        // Update simulation - returns collision events
-        let collision_events = update_simulation(&mut simulation);
-
-        // Handle collision events for visual effects
-        for event in &collision_events {
-            graphics.handle_collision_event(event, CREEP_SCALE, OFFSET_X, OFFSET_Y);
-        }
-
-        // Check if we need to trigger all green completed effect
-        if simulation.all_green_completed && !trigger_all_green_effect {
-            graphics.trigger_all_green_completed();
-            trigger_all_green_effect = true;
+        // Handle simulation events for visual effects
+        for event in &result.simulation_events {
+            match event {
+                SimulationEvent::Collision { x, y, creep_type } => {
+                    // Create a temporary CollisionEvent for the graphics handler
+                    let collision_event = CollisionEvent {
+                        x: *x,
+                        y: *y,
+                        creep_type: *creep_type,
+                    };
+                    graphics.handle_collision_event(&collision_event, CREEP_SCALE, OFFSET_X, OFFSET_Y);
+                }
+                SimulationEvent::AllGreenCompleted => {
+                    graphics.trigger_all_green_completed();
+                    trigger_all_green_effect = true;
+                }
+            }
         }
 
         // Reset the flag after triggering
         if trigger_all_green_effect && graphics.get_reset_alpha() <= 0.0 {
             trigger_all_green_effect = false;
-            simulation.all_green_completed = false;
+            env.state_mut().all_green_completed = false;
         }
 
         // Update player graphics
         if let Some(unit) = graphics.units.first_mut() {
-            unit.x = (simulation.entity.x as f32 - 5.0) * ENTITY_SCALE + OFFSET_X;
-            unit.y = (simulation.entity.y as f32 - 5.0) * ENTITY_SCALE + OFFSET_Y;
+            unit.x = (env.state().entity.x as f32 - 5.0) * ENTITY_SCALE + OFFSET_X;
+            unit.y = (env.state().entity.y as f32 - 5.0) * ENTITY_SCALE + OFFSET_Y;
         }
 
         // Update creep graphics
-        graphics.update_creeps(&simulation.creeps, CREEP_SCALE, OFFSET_X, OFFSET_Y);
+        graphics.update_creeps(&env.state().creeps, CREEP_SCALE, OFFSET_X, OFFSET_Y);
 
         // Update visual effects
         graphics.update(DELTA_TIME as f32);
+        graphics.flash_bakground_white_if_timer();
 
         // Draw everything
         graphics.draw();
 
-        //draw_red_green_count(&mut simulation);
-        draw_controls_and_status(&mut simulation);
-
+        draw_controls_and_status(env.state_mut());
         draw_completion_message_when_green_reset(&mut graphics);
 
         // Draw box boundaries
@@ -98,19 +109,23 @@ async fn main() {
 
         next_frame().await;
 
-        // wait for set DELTA_TIME:
+        // wait for set DELTA_TIME
         let remaining_time = DELTA_TIME - (get_time() - start_time);
         if remaining_time > 0.0 {
             sleep(Duration::from_secs_f64(remaining_time));
+        }
+
+        // Check for truncation (episode end)
+        if result.truncated {
+            let (_, _) = env.reset(None);
         }
     }
 }
 
 fn draw_controls_and_status(simulation: &mut Simulation) {
-    // Draw controls and status
     draw_text("Controls:", 20.0, 20.0, 20.0, WHITE);
     draw_text("Arrow keys / WASD: Move", 20.0, 40.0, 20.0, WHITE);
-    draw_text("Space: Pause/Resume", 20.0, 60.0, 20.0, WHITE);
+    draw_text("Space: Pause", 20.0, 60.0, 20.0, WHITE);
     draw_text("ESC or Q: Quit", 20.0, 80.0, 20.0, WHITE);
     draw_text(
         format!("Creeps: {}", simulation.creeps.len()).as_str(),
@@ -124,13 +139,12 @@ fn draw_controls_and_status(simulation: &mut Simulation) {
         20.0,
         120.0,
         20.0,
-        Color::new(0.0, 1.0, 1.0, 1.0), // Cyan for score
+        Color::new(0.0, 1.0, 1.0, 1.0),
     );
 
-    // Draw pause status - big and clear
     if simulation.paused {
         draw_text(
-            "SIMULATION FROZEN - Press SPACE to resume",
+            "SIMULATION PAUSED - Press SPACE to resume",
             SCREEN_WIDTH / 2.0 - 170.0,
             SCREEN_HEIGHT / 2.0,
             20.0,
@@ -138,18 +152,39 @@ fn draw_controls_and_status(simulation: &mut Simulation) {
         );
     }
 }
+
+fn draw_completion_message_when_green_reset(graphics: &mut graphics::SimulationGraphics) {
+    let reset_alpha = graphics.get_reset_alpha() * 2.0;
+    if reset_alpha > 0.0 {
+        let message = "All Green Creeps Collected! Creeps Reset";
+        let text_width = measure_text(message, None, 20, 1.0).width;
+        draw_text(
+            message,
+            SCREEN_WIDTH / 2.0 - text_width / 2.0,
+            SCREEN_HEIGHT / 2.0 - 50.0,
+            20.0,
+            Color {
+                r: 0.8,
+                g: 0.8,
+                b: 0.8,
+                a: reset_alpha,
+            },
+        );
+    }
+}
+
 #[allow(unused)] // Not called: I find it too crowded in the GUI.
 fn draw_red_green_count(simulation: &mut Simulation) {
     // Draw creep count with types
     let green_count = simulation
         .creeps
         .iter()
-        .filter(|c| matches!(c.creep_type, simulation::CreepType::Green))
+        .filter(|c| matches!(c.creep_type, CreepType::Green))
         .count();
     let red_count = simulation
         .creeps
         .iter()
-        .filter(|c| matches!(c.creep_type, simulation::CreepType::Red))
+        .filter(|c| matches!(c.creep_type, CreepType::Red))
         .count();
     draw_text(
         format!("Green creeps: {} (+1.0)", green_count).as_str(),
@@ -168,65 +203,33 @@ fn draw_red_green_count(simulation: &mut Simulation) {
 }
 /// Draw information about simulation: controls and if simulation is paused.
 /// Handle keyboard input for acceleration and pausing etc
-fn handle_keyboard_intput(simulation: &mut Simulation) {
+fn handle_keyboard_intput() -> Action {
     // Handle input - WASD and Arrow keys for movement
 
+    // Handle keyboard input
+    let mut action = Action::NoOp;
     if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
-        simulation.entity.accelerate_left();
+        action = Action::Left;
     }
     if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
-        simulation.entity.accelerate_right();
+        action = Action::Right;
     }
     if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
-        simulation.entity.accelerate_up();
+        action = Action::Up;
     }
     if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
-        simulation.entity.accelerate_down();
+        action = Action::Down;
     }
 
-    // Toggle pause with Space
+    /* Toggle pause with Space
     if is_key_pressed(KeyCode::Space) {
         simulation.paused = !simulation.paused;
-    }
+    }*/
 
     // Quit with ESC or Q
     if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
         std::process::exit(0);
     }
-}
-/// Draw reset completion message after last green
-fn draw_completion_message_when_green_reset(graphics: &mut graphics::SimulationGraphics) {
-    let reset_alpha = graphics.get_reset_alpha() * 2.0;
-    if reset_alpha > 0.0 {
-        let message = "All Green Creeps Collected! Creeps Reset";
-        let text_width = measure_text(message, None, 20, 1.0).width;
-        draw_text(
-            message,
-            SCREEN_WIDTH / 2.0 - text_width / 2.0,
-            SCREEN_HEIGHT / 2.0 - 50.0,
-            20.0,
-            Color {
-                r: 0.0,
-                g: 1.0,
-                b: 0.0,
-                a: reset_alpha,
-            },
-        );
-    }
-}
-/// Special graphical feedback when all green are eaten: flash background white
-fn flash_bakground_white_if_timer(graphics: &mut graphics::SimulationGraphics) {
-    // Flash background white if flash timer is active
-    let flash_intensity = graphics.get_flash_intensity();
-    if flash_intensity > 0.0 {
-        let bg_color = Color {
-            r: flash_intensity,
-            g: flash_intensity,
-            b: flash_intensity,
-            a: 1.0,
-        };
-        clear_background(bg_color);
-    } else {
-        clear_background(BLACK);
-    }
+
+    action
 }

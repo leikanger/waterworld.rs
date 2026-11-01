@@ -50,7 +50,16 @@ pub struct Creep {
     pub creep_type: CreepType,
 }
 
-// Collision event for graphics to handle visual effects
+// Simulation events for graphics to handle visual effects
+#[derive(Clone, Copy, Debug)]
+pub enum SimulationEvent {
+    /// Entity collided with a creep
+    Collision { x: f64, y: f64, creep_type: CreepType },
+    /// All green creeps have been collected
+    AllGreenCompleted,
+}
+
+// Collision event for graphics to handle visual effects (kept for backward compatibility)
 #[derive(Clone, Copy, Debug)]
 pub struct CollisionEvent {
     pub x: f64,
@@ -148,12 +157,12 @@ pub fn init_simulation() -> Simulation {
 }
 
 // Update the simulation state
-pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
+pub fn update_simulation(simulation: &mut Simulation) -> Vec<SimulationEvent> {
     if simulation.paused {
         return Vec::new();
     }
 
-    let mut collision_events = Vec::new();
+    let mut events = Vec::new();
 
     // Check if all green creeps are gone (only red or no creeps left)
     // Note: This logic only makes sense in the context of the game where
@@ -170,6 +179,7 @@ pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
             // The actual reset will be handled by the graphics/UI layer
             simulation.all_green_completed = true;
             simulation.respawn_creeps();
+            events.push(SimulationEvent::AllGreenCompleted);
         }
     }
 
@@ -233,7 +243,7 @@ pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
         if distance < ENTITY_RADIUS + CREEP_RADIUS {
             // Collision! Record the event for graphics to handle
             let value = creep.get_value();
-            collision_events.push(CollisionEvent {
+            events.push(SimulationEvent::Collision {
                 x: creep.x,
                 y: creep.y,
                 creep_type: creep.creep_type,
@@ -263,7 +273,7 @@ pub fn update_simulation(simulation: &mut Simulation) -> Vec<CollisionEvent> {
         }
     }
 
-    collision_events
+    events
 }
 
 // Getters for simulation constants (useful for graphics scaling)
@@ -497,11 +507,14 @@ mod tests {
         }
 
         let events = update_simulation(&mut sim);
-        assert!(events.is_empty());
+
+        // Should have AllGreenCompleted event
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], SimulationEvent::AllGreenCompleted));
 
         // Should trigger reset since no green creeps
         assert!(sim.all_green_completed);
-        assert_eq!(sim.creeps.len(), 5); // Reset to 3 creeps
+        assert_eq!(sim.creeps.len(), 5); // Reset to 5 creeps
     }
 
     #[test]
