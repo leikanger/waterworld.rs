@@ -2,9 +2,14 @@
 name = "simulator"
 version = "0.1.0"
 edition = "2024"
+description = "A rust implementation of Carpathy's WaterWorld env for autonomous navigation RL research"
+license = "MIT"
+repository = "https://github.com/leikanger/waterworld.rs.git"
+readme = "README.md"
+keywords = ["RL environment RL-research, "]
 
 [[bin]]
-name = "simulator"
+name = "waterworld"
 path = "src/main.rs"
 
 [lints.rust]
@@ -18,8 +23,8 @@ rand = "0.8"
 #rstest = "0.25.0"
 
 [lints.clippy]
-pedantic = { level = "deny", priority = -1 }   # UM, ACTUALLY
-nursery = { level = "deny", priority = -1 }    # BETA LINTS
+#pedantic = { level = "deny", priority = -1 }   # UM, ACTUALLY
+#nursery = { level = "deny", priority = -1 }    # BETA LINTS
 # DENY PANICS
 unwrap_used = "deny"
 expect_used = "deny"
