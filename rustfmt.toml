@@ -1,0 +1,7 @@
+# rustfmt doc - https://rust-lang.github.io/rustfmt/
+
+# JC Style 
+hard_tabs = false
+edition = "2021"
+max_width = 120
+chain_width = 60

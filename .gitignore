@@ -1,0 +1,9 @@
+/target
+experiments/
+/.idea/
+Cargo.lock
+.DS_store
+src/nres/arkiv
+.bacon-locations
+.vscode/launch.json
+.zed/debug.json
