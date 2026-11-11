@@ -69,6 +69,7 @@ pub struct Env {
 
 impl Env {
     /// Create a new environment
+    #[must_use]
     pub fn new(config: Config) -> Self {
         Self {
             simulation: Simulation::default(),
@@ -140,14 +141,16 @@ impl Env {
     }
 
     /// Get current observation
+    #[allow(clippy::as_conversions)]
     fn get_observation(&self) -> Observation {
-        let mut obs = Vec::new();
-
         // Entity state: x, y, vx, vy
-        obs.push(self.simulation.entity.x as f32);
-        obs.push(self.simulation.entity.y as f32);
-        obs.push(self.simulation.entity.vx as f32);
-        obs.push(self.simulation.entity.vy as f32);
+        let (x, y, vx, vy) = (
+            self.simulation.entity.x as f32,
+            self.simulation.entity.y as f32,
+            self.simulation.entity.vx as f32,
+            self.simulation.entity.vy as f32,
+        );
+        let mut obs = vec![x, y, vx, vy];
 
         // Creep states: x, y, vx, vy, type (1.0 for Green, -1.0 for Red)
         for creep in &self.simulation.creeps {
@@ -165,12 +168,13 @@ impl Env {
     }
 
     /// Get the simulation state (for rendering)
-    pub fn state(&self) -> &Simulation {
+    #[must_use]
+    pub const fn state(&self) -> &Simulation {
         &self.simulation
     }
 
     /// Get mutable simulation state
-    pub fn state_mut(&mut self) -> &mut Simulation {
+    pub const fn state_mut(&mut self) -> &mut Simulation {
         &mut self.simulation
     }
 }
