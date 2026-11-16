@@ -4,7 +4,7 @@ const BOX_HEIGHT: f64 = 10.0;
 const ENTITY_RADIUS: f64 = 0.2;
 const CREEP_RADIUS: f64 = 0.15;
 const BOUNCE_COEFFICIENT: f64 = 0.8;
-const FRICTION: f64 = 0.99;
+pub(crate) const DEFAULT_FRICTION: f64 = 0.99;
 const NUMBER_OF_CREEPS: u32 = 5;
 const ACCELERATION: f64 = 0.02;
 
@@ -73,6 +73,8 @@ pub struct Simulation {
     pub creeps: Vec<Creep>,
     pub score: u32,
     pub paused: bool,
+    /// Velocity multiplier applied on each update; must be in `0.0..=1.0`.
+    pub friction: f64,
     pub all_green_completed: bool, // Flag to track if all green creeps were collected
 }
 
@@ -136,8 +138,25 @@ pub enum ParticleColor {
     Red,
 }
 
-// Initialize the simulation
+/// Initialize the simulation with the default friction.
 pub fn init_simulation() -> Simulation {
+    init_simulation_with_friction(DEFAULT_FRICTION)
+}
+
+pub(crate) fn validate_friction(friction: f64) {
+    assert!(
+        (0.0..=1.0).contains(&friction),
+        "friction must be between 0.0 and 1.0 inclusive, got {friction}"
+    );
+}
+
+/// Initialize the simulation with a custom velocity multiplier.
+///
+/// # Panics
+///
+/// Panics if `friction` is not in `0.0..=1.0`, including NaN.
+pub fn init_simulation_with_friction(friction: f64) -> Simulation {
+    validate_friction(friction);
     let mut simulation = Simulation {
         entity: Entity {
             x: BOX_WIDTH / 2.0,
@@ -148,6 +167,7 @@ pub fn init_simulation() -> Simulation {
         creeps: Vec::new(),
         score: 0,
         paused: false,
+        friction,
         all_green_completed: false,
     };
 
@@ -156,8 +176,13 @@ pub fn init_simulation() -> Simulation {
     simulation
 }
 
-// Update the simulation state
+/// Update the simulation state.
+///
+/// # Panics
+///
+/// Panics if the simulation's friction is not in `0.0..=1.0`, including NaN.
 pub fn update_simulation(simulation: &mut Simulation) -> Vec<SimulationEvent> {
+    validate_friction(simulation.friction);
     if simulation.paused {
         return Vec::new();
     }
@@ -208,8 +233,8 @@ pub fn update_simulation(simulation: &mut Simulation) -> Vec<SimulationEvent> {
     }
 
     // Apply friction to player
-    entity.vx *= FRICTION;
-    entity.vy *= FRICTION;
+    entity.vx *= simulation.friction;
+    entity.vy *= simulation.friction;
 
     // Update creeps
     for creep in &mut simulation.creeps {
@@ -326,8 +351,40 @@ mod tests {
 
         assert_eq!(sim.entity.x, BOX_WIDTH / 2.0 + 1.0);
         assert_eq!(sim.entity.y, BOX_HEIGHT / 2.0 + 1.0);
-        assert_eq!(sim.entity.vx, 1.0 * FRICTION);
-        assert_eq!(sim.entity.vy, 1.0 * FRICTION);
+        assert_eq!(sim.entity.vx, 0.99);
+        assert_eq!(sim.entity.vy, 0.99);
+    }
+
+    #[test]
+    fn friction_guard_accepts_endpoints_and_rejects_invalid_values() {
+        for friction in [0.0, 0.5, 1.0] {
+            assert_eq!(init_simulation_with_friction(friction).friction, friction);
+        }
+        for friction in [-0.01, 1.01, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(std::panic::catch_unwind(|| init_simulation_with_friction(friction)).is_err());
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "friction must be between 0.0 and 1.0 inclusive")]
+    fn update_rejects_mutated_invalid_friction() {
+        let mut sim = init_simulation();
+        sim.friction = f64::NAN;
+        update_simulation(&mut sim);
+    }
+
+    #[test]
+    fn custom_friction_is_applied_each_update() {
+        let mut sim = init_simulation_with_friction(0.5);
+        sim.creeps.clear();
+        sim.entity.vx = 1.0;
+        sim.entity.vy = -0.5;
+
+        update_simulation(&mut sim);
+        update_simulation(&mut sim);
+
+        assert_eq!(sim.entity.vx, 0.25);
+        assert_eq!(sim.entity.vy, -0.125);
     }
 
     #[test]
@@ -390,6 +447,7 @@ mod tests {
             ],
             score: 0,
             paused: false,
+            friction: DEFAULT_FRICTION,
             all_green_completed: false,
         };
 
@@ -480,6 +538,7 @@ mod tests {
             ],
             score: 0,
             paused: false,
+            friction: DEFAULT_FRICTION,
             all_green_completed: false,
         };
 

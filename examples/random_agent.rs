@@ -2,7 +2,7 @@
 //!
 //! Runs a random policy on the simulator and prints episode returns.
 
-use neoRL_simulator::rl::{Action, Config, Env};
+use simulator::rl::{Action, Config, Env};
 use rand::Rng;
 
 fn main() {
@@ -10,6 +10,7 @@ fn main() {
         max_episode_steps: 1000,
         dt: 0.01,
         frame_skip: 1,
+        ..Config::default()
     };
 
     let mut env = Env::new(config);

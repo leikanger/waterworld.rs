@@ -47,6 +47,8 @@ pub struct Config {
     pub max_episode_steps: usize,
     pub dt: f64,
     pub frame_skip: usize,
+    /// Velocity multiplier applied on each update, in `0.0..=1.0` (default: 0.99).
+    pub friction: f64,
 }
 
 impl Default for Config {
@@ -55,6 +57,7 @@ impl Default for Config {
             max_episode_steps: 1000,
             dt: 0.01,
             frame_skip: 1,
+            friction: DEFAULT_FRICTION,
         }
     }
 }
@@ -68,11 +71,15 @@ pub struct Env {
 }
 
 impl Env {
-    /// Create a new environment
+    /// Create a new environment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `config.friction` is not in `0.0..=1.0`, including NaN.
     #[must_use]
     pub fn new(config: Config) -> Self {
         Self {
-            simulation: Simulation::default(),
+            simulation: init_simulation_with_friction(config.friction),
             config,
             step_count: 0,
             last_score: 0,
@@ -81,7 +88,7 @@ impl Env {
 
     /// Reset the environment
     pub fn reset(&mut self, _seed: Option<u64>) -> (Observation, std::collections::HashMap<String, String>) {
-        self.simulation = Simulation::default();
+        self.simulation = init_simulation_with_friction(self.config.friction);
         self.step_count = 0;
         self.last_score = self.simulation.score;
         let obs = self.get_observation();
@@ -90,8 +97,13 @@ impl Env {
         (obs, info)
     }
 
-    /// Step the environment
+    /// Step the environment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the simulation's friction is not in `0.0..=1.0`, including NaN.
     pub fn step(&mut self, action: Action) -> StepResult {
+        validate_friction(self.simulation.friction);
         // Apply action
         action.apply(&mut self.simulation.entity);
 

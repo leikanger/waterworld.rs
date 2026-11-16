@@ -28,6 +28,7 @@ fn test_truncation_at_max_steps() {
         max_episode_steps: 10,
         dt: 0.01,
         frame_skip: 1,
+        ..Config::default()
     };
     let mut env = Env::new(config);
     env.reset(None);
@@ -55,6 +56,61 @@ fn test_action_affects_velocity() {
 
     // Up action should decrease vy (accelerate upward)
     assert!(new_vy < initial_vy);
+}
+
+#[test]
+fn custom_friction_survives_reset_and_applies_per_frame() {
+    let mut env = Env::new(Config {
+        friction: 0.5,
+        frame_skip: 2,
+        ..Config::default()
+    });
+    assert_eq!(env.state().friction, 0.5);
+
+    for reset in [false, true] {
+        if reset {
+            // A reset restores the configured value, even if the state was changed.
+            env.state_mut().friction = 0.1;
+            env.reset(None);
+        }
+        assert_eq!(env.state().friction, 0.5);
+        let state = env.state_mut();
+        state.creeps.clear();
+        state.entity.vx = 1.0;
+        state.entity.vy = -0.5;
+        env.step(Action::NoOp);
+        assert_eq!(env.state().entity.vx, 0.25);
+        assert_eq!(env.state().entity.vy, -0.125);
+    }
+}
+
+#[test]
+fn default_friction_is_unchanged() {
+    assert_eq!(Config::default().friction, 0.99);
+    assert_eq!(Env::default().state().friction, 0.99);
+}
+
+#[test]
+fn env_rejects_invalid_configured_friction() {
+    for friction in [-0.01, 1.01, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let result = std::panic::catch_unwind(|| {
+            Env::new(Config {
+                friction,
+                ..Config::default()
+            })
+        });
+        assert!(result.is_err());
+    }
+}
+
+#[test]
+fn env_rejects_invalid_mutated_friction_before_action() {
+    let mut env = Env::default();
+    env.state_mut().friction = 1.01;
+    let initial_entity = env.state().entity;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| env.step(Action::Up)));
+    assert!(result.is_err());
+    assert_eq!(env.state().entity, initial_entity);
 }
 
 #[test]

@@ -25,6 +25,7 @@ async fn main() {
         max_episode_steps: 10000,
         dt: 0.01,
         frame_skip: 1,
+        ..Config::default()
     };
 
     let mut env = Env::new(config);
